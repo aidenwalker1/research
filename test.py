@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.nn import functional as F
+import scipy.stats
+import stat_features
 #from d2l import torch as d2l
 
 def read_prompts(path) :
@@ -22,16 +24,15 @@ def read_prompts(path) :
     
     for d in data :
         prompts = d['prompts']
-        arr = [0] * 8
+        arr = [-1] * 9
         save_stamp = None
-        print(len(prompts))
         for i in range(len(prompts)) :
             prompt = prompts[i]
 
             index = prompt['prompt_name'][-1]
             type = prompt['prompt_type']
 
-            if not index.isnumeric() or int(index) == 8:
+            if not index.isnumeric():
                 if type == 'activity_audio_log' :
                     audio_output.append((stamp, value))
                 continue
@@ -207,40 +208,47 @@ def analyze_data(data, interaction, index, cl) :
     r = data[:,0]
     a = data[:,1]
     h = data[:,2]
-    r_a = np.mean(r)
-    a_a = np.mean(a)
-    h_a = np.mean(h)
-
-    r_d = np.std(r)
-    a_d = np.std(a)
-    h_d = np.std(h)
-    h_max = np.max(h)
-    h_min = np.min(h)
-
     interaction = np.array(interaction)
+    s1 = stat_features.generate_statistical_features(r)
+    s2 = stat_features.generate_statistical_features(a)
+    s3 = stat_features.generate_statistical_features(h)
+    s4 = stat_features.generate_statistical_features(interaction)
+    new_data += ([s1] + [s2] + [s3] + [s4] + [index] )
+    #new_data += (s1 + s2 + s3 + s4 + [cl] + [index] )
+    # r_a = np.mean(r)
+    # a_a = np.mean(a)
+    # h_a = np.mean(h)
+
+    # r_d = np.std(r)
+    # a_d = np.std(a)
+    # h_d = np.std(h)
+    # h_max = np.max(h)
+    # h_min = np.min(h)
+
     
-    i_sum = 0
-    i_avg = 0
-    i_max = 0
-    i_min = 0
-    i_std = 0
-    if interaction.size != 0 :
-        i_sum = np.sum(interaction)
-        i_avg = np.average(interaction)
-        i_max = np.max(interaction)
-        i_min = np.min(interaction)
-        i_std = np.std(interaction)
+    
+    # i_sum = 0
+    # i_avg = 0
+    # i_max = 0
+    # i_min = 0
+    # i_std = 0
+    # if interaction.size != 0 :
+    #     i_sum = np.sum(interaction)
+    #     i_avg = np.average(interaction)
+    #     i_max = np.max(interaction)
+    #     i_min = np.min(interaction)
+    #     i_std = np.std(interaction)
 
-    for i in range(0, len(data)-60, 60) :
-        r1_a = np.mean(r[i:i+60])
-        a1_a = np.mean(a[i:i+60])
-        h1_a = np.mean(h[i:i+60])
+    # for i in range(0, len(data)-60, 60) :
+    #     r1_a = np.mean(r[i:i+60])
+    #     a1_a = np.mean(a[i:i+60])
+    #     h1_a = np.mean(h[i:i+60])
 
-        r1_d = np.std(r[i:i+60])
-        a1_d = np.std(a[i:i+60])
-        h1_d = np.std(h[i:i+60])
-        #r1_a, a1_a, h1_a, r1_d, a1_d, h1_d, 
-        new_data.append([r1_a, a1_a, h1_a, r1_d, a1_d, h1_d, r_a, a_a, h_a, r_d, a_d, h_d, h_max, h_min, i_sum, i_avg, i_max, i_min, i_std, interaction.size, index])
+    #     r1_d = np.std(r[i:i+60])
+    #     a1_d = np.std(a[i:i+60])
+    #     h1_d = np.std(h[i:i+60])
+    #     #r1_a, a1_a, h1_a, r1_d, a1_d, h1_d, 
+    #     new_data.append([r1_a, a1_a, h1_a, r1_d, a1_d, h1_d, r_a, a_a, h_a, r_d, a_d, h_d, h_max, h_min, i_sum, i_avg, i_max, i_min, i_std, interaction.size, index])
     return new_data
         
 
@@ -433,7 +441,7 @@ def train_model(responses, data, y_index) :
 def train(X_train, X_test, y_train, y_test) :
     #oversample = SMOTE()
     #X_train, y_train = oversample.fit_resample(X_train, y_train)
-    clf = MLPClassifier(random_state=1, max_iter=3000,activation='tanh',hidden_layer_sizes=(12,6)).fit(X_train, y_train)
+    clf = MLPClassifier(random_state=1, max_iter=300000,activation='tanh',hidden_layer_sizes=(12,6),epsilon=1e-12).fit(X_train, y_train)
     print(clf.score(X_test,y_test))
     #test_accuracy(clf,X_test[0:2000],y_test[0:2000])
     return clf, clf.score(X_test, y_test)
@@ -502,12 +510,14 @@ def get_interactions(log_path, responses) :
     return interaction_durations
 
 def get_data(range) :
-    dyad = "dyads/dyadH05A1w"
+    dyad = "dyads/dyadH05A2w"
     path = dyad + ".prompt_groups.json"
     data_path = "clean_sensor_data.json"
     log_path = dyad + ".system_logs.log"
     freqs, home_cords = find_home("clean_sensor_data.json", 5000)
     responses, audio_responses = read_prompts(path)
+    for response in responses :
+        print('response: ' + str(response[1]) + ' ' + str(response[2]) + ' ' + str(response[3]) + ' ' + str(response[2]))
     interactions = get_interactions(log_path, responses)
     data = read_data_better(data_path, responses, interactions, range, home_cords)
 
@@ -521,6 +531,9 @@ def run() :
     read_range = 256000
     freqs, home_cords = find_home(data_path, 10000)
     responses, audio_responses = read_prompts(path)
+
+   
+
     interactions = get_interactions(log_path, responses)
     data = read_data(data_path, responses, interactions, read_range, home_cords)
     #plot_data(data, responses)

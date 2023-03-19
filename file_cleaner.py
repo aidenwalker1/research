@@ -11,16 +11,15 @@ def read_prompts(path) :
     
     for d in data :
         prompts = d['prompts']
-        arr = [0] * 8
+        arr = [-1] * 9
         save_stamp = None
-        print(len(prompts))
         for i in range(len(prompts)) :
             prompt = prompts[i]
 
             index = prompt['prompt_name'][-1]
             type = prompt['prompt_type']
 
-            if not index.isnumeric() or int(index) == 8:
+            if not index.isnumeric():
                 if type == 'activity_audio_log' :
                     audio_output.append((stamp, value))
                 continue
@@ -53,9 +52,9 @@ def read_prompts(path) :
     
     return output, audio_output
 
-def clean_data(path, responses) :
+def clean_data(path, responses, dyad) :
     file = open(path, 'r')
-    cleaned_data = open('clean_sensor_data.json', 'w')
+    cleaned_data = open(dyad + '_clean_sensor_data.json', 'w')
     st = file.readline()
 
     while st != '':
@@ -123,9 +122,11 @@ def in_interval(stamp, responses) :
         index += 1
     return -1
 
-dyad = "dyads/dyadH05A1w"
-path = dyad + ".prompt_groups.json"
-data_path = dyad + ".sensor_data.json"
-log_path = dyad + ".system_logs.log"
+folder = "dyads/"
+dyad = "dyadH05A2w"
+
+path = folder + dyad + ".prompt_groups.json"
+data_path = folder + dyad + ".sensor_data.json"
+log_path = folder + dyad + ".system_logs.log"
 responses, audio_responses = read_prompts(path)
-clean_data(data_path, responses)
+clean_data(data_path, responses, dyad)

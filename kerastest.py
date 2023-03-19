@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import random
 import time
+from sklearn.feature_selection import SequentialFeatureSelector
 random.seed(time.time())
 # Tensorflow / Keras
 from tensorflow import keras # for building Neural Networks
@@ -28,26 +29,27 @@ from matplotlib import pyplot
 
 def plot_data(data, y) :
     #heartrate = 2
+    y1 = [data[i][92] for i in range(0,len(data))]
+    mv = max(y1)
+    x = [i for i in range(len(data))]
+    y = [y[i]*(mv/5) for i in range(len(y))]
     
-
-    #x = [i for i in range(len(data))]
-   
-    x = [data[i][8] for i in range(0,len(data))]
     #x1 = [data[i][15] for i in range(0,len(data))]
     #x2 =[data[i][18] for i in range(0,len(data))]
-    pyplot.scatter(y,x)
+    #pyplot.scatter(y,x)
     #pyplot.scatter(y,x1)
     #pyplot.scatter(y,x2)
-    pyplot.show()
-    return
+    #pyplot.show()
+    #return
+    fig, ax = pyplot.subplots()
     ax.plot(x, y, "r--")
-    #ax.plot(x, y2, "b")
+    ax.plot(x, y1, "b")
     pyplot.xlabel("Heartrate")
     pyplot.ylabel("Feeling")
     pyplot.title("Graph")
-    pyplot.ylim([0, 6])
-    #start, end = ax.get_xlim()
-    #ax.xaxis.set_ticks(np.arange(start, end, 30))
+    #pyplot.ylim([0, ])
+    start, end = ax.get_xlim()
+    ax.xaxis.set_ticks(np.arange(start, end, 1))
     pyplot.show()
 
 dyad = "dyads/dyadH05A1w"
@@ -55,7 +57,7 @@ path = dyad + ".prompt_groups.json"
 responses, audio_responses = DataMiner.read_prompts(path)
 
 time_step = 1
-data_length = 60000
+data_length = 120000
 
 data = DataMiner.get_data(data_length)
 scaler = MinMaxScaler()
@@ -103,6 +105,7 @@ def lstm(data, responses) :
         if int(round(ys[-1][0])) == y_t[-1] :
             correct += 1
         elif abs(int(round(ys[-1][0])) - y_t[-1]) <= 1 :
+            print("correct:" + str(y_t[-1]) + "got:" + str(ys[-1][0]))
             top_2 += 1
         else :
             print("correct:" + str(y_t[-1]) + "got:" + str(ys[-1][0]))
@@ -110,34 +113,100 @@ def lstm(data, responses) :
             
 
     print (correct / total)
+    print((top_2 + correct) / total)
     return model
 
-def nn(data, responses) :
-    #X = scaler.fit_transform(X)
-    npdata = [data[i][j] for i in range(len(data)) for j in range(len(data[0]))]
-    npdata = np.array(npdata)
-    test_size = len(data)
-    X_train = X[0:data_length//2,:]
-    X_test = X[data_length//2:data_length:,:]
+def nn(all_data, responses) :
+    data = np.array(all_data)
+    ys = [[data[i,-1]] for i in range(data.shape[0])]
+    alls = []
+    cur = np.zeros(shape=(8, data.shape[0], data.shape[1] - 1))
+
+    for i in range(data.shape[1] - 1) :
+        
+        n = np.array(data[:,i])
+        if n.size == 0 :
+            print('continue' + str(i))
+            continue
+        npdata = np.zeros(shape=(data.shape[0], len(data[i][0])))
+        for j in range(data.shape[0]) :
+            npdata[j] = n[j]
+
+        for j in range(1,8) :
+            if j == 5 or j == 6 :
+                continue
+
+            y = np.array(DataMiner.get_y(responses, ys, j))
+            indices = np.where(y != -1)[0]
+            y = y[indices]
+            if y.size == 0 :
+                continue
+            X = npdata[indices,0:]
+            
+            data_length = X.shape[0]
+            X_train = X[0:data_length//2,:]
+            X_test = X[data_length//2:data_length:,:]
+            y_train = np.array(y[0:data_length//2])
+            y_test = np.array(y[data_length//2:data_length:])
+            
+            clf, score = DataMiner.train(X,X,y,y)
+            preds = clf.predict(X)
+            cur[j,:,i] = preds
     acc = 0
-    count = 7
+    print()
     for i in range(1,8) :
-        print('i:'+str(i))
-        y = np.array(DataMiner.get_y(responses, data, i))
+        if i == 5 or i == 6 :
+            continue
+        y = np.array(DataMiner.get_y(responses, ys, i))
+        data_length = data.shape[0]
         indices = np.where(y != -1)[0]
         y = y[indices]
-        X = npdata[indices,0:len(data[0]) - 1]
-        test_size = X.shape[0]
+        if y.size == 0 :
+            return
+        X = cur[i,indices,:]
         X_train = X[0:data_length//2,:]
         X_test = X[data_length//2:data_length:,:]
         y_train = np.array(y[0:data_length//2])
         y_test = np.array(y[data_length//2:data_length:])
-        #plot_data(data, y)
+        print('i:'+str(i))
         clf, score = DataMiner.train(X_train,X_test,y_train,y_test)
         acc += score
-    print(acc / count)
+    print('acc:' + str(acc/5))
 
-lstm(data, responses)
+        
+
+def easy_nn(data, responses) :
+    npdata = np.array(data)
+    data_length = npdata.shape[0]
+    X = npdata[:,:len(data[0]) - 1]
+    X_train = X[0:data_length//2,:]
+    X_test = X[data_length//2:data_length:,:]
+    
+    acc = 0
+    count = 0
+
+    for j in range(1,8) :
+        if j == 5 or j == 6 :
+            continue
+        print('j:'+str(j))
+        y = np.array(DataMiner.get_y(responses, data, j))
+        indices = np.where(y != -1)[0]
+        y = y[indices]
+        if y.size == 0 :
+            print('inner continue ' + str(j))
+            continue
+        X = npdata[indices,:len(data[0]) - 1]
+        data_length = X.shape[0]
+        X_train = X[0:data_length//2,:]
+        X_test = X[data_length//2:data_length:,:]
+        y_train = np.array(y[0:data_length//2])
+        y_test = np.array(y[data_length//2:data_length:])
+        
+        clf, score = DataMiner.train(X_train,X_test,y_train,y_test)
+        acc += score
+    print('average acc: ' + str(acc / 5))
+        
+nn(data, responses)
 
 # plot history
 # pyplot.plot(history.history['loss'], label='train')
